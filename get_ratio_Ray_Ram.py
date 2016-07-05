@@ -170,9 +170,33 @@ for obs_date in lidar_dates:
 
     ax.set_ylabel('Altitude [km]')
     plt.title(obs_date)
-    plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/raw_data_'+obs_date+'.png')
+    plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/raw_data_perp_'+obs_date+'.png')
     plt.show()
     
+    fig, ax = plt.subplots(1)
+
+    X,Y = np.meshgrid(mpl.dates.date2num(dates),alts)
+
+    ax.xaxis.set_major_locator(DayLocator())
+    ax.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d'))
+    ax.xaxis.set_minor_locator(HourLocator())
+    ax.autoscale_view()
+
+    # For plotting the backscatter ratio R
+    lev_exp = np.arange(1.06,2.1,0.1)
+    levels = np.power(10,lev_exp)
+    im = ax.contourf(X, Y, ratio)#,levels=levels)#, norm=mpl.colors.LogNorm())
+    cbar = plt.colorbar(im)
+
+    # For plotting the depolarisation of the aerosols
+    #levels = np.arange(2,10.01,0.1)
+    #im = ax.contourf(X, Y, d_aero, levels=levels,extend='both')
+    #cbar = plt.colorbar(im,ticks=np.arange(2,10.1,1))
+
+    ax.set_ylabel('Altitude [km]')
+    plt.title(obs_date)
+    plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/raw_data_par_'+obs_date+'.png')
+    plt.show()
 
     #"""
     fig, ax = plt.subplots(1)
@@ -285,6 +309,9 @@ for obs_date in lidar_dates:
     #plt.set_xlabel('Parallel backscatter ratio')
     #plt.title(obs_date)
     #plt.show()
+    
+    #cax = ax.scatter(R,R_time_array)
+    #cax = ax.scatter(xR,R_time_array)
     
 
    # """
