@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.dates import YearLocator, MonthLocator, DayLocator, HourLocator, DateFormatter
 import datetime
 from scipy import stats
+import scipy.io
 from netCDF4 import Dataset
 from dateutil.rrule import rrule, HOURLY
 
@@ -14,14 +15,23 @@ from dateutil.rrule import rrule, HOURLY
 # --> masks where NaNs are present
 # --> save directly in '/Figures/raw_data'
 # --------------------------------------------------------------------------------
-#taken out bc no nc file bc HDF5 format: '160113',
-lidar_dates = ['160105', '160106',  '160114', '160118', '160120', '160121', '160123', '160126', '160127', '160129', '160201', '160215', '160216']
+
+lidar_dates = ['160105', '160106', '160113', '160114', '160118', '160120', '160121', '160123', '160126', '160127', '160129', '160201', '160215', '160216']
+#lidar_dates = ['160113']
 
 for obs_date in lidar_dates:
 
 
     m_file = Dataset('/Users/marinstanev/Dropbox/MISU/Data/esrange_mat_format/16jan/Rayleigh_channels_'+obs_date+'.nc')
-
+    peggy_file = scipy.io.loadmat('/Users/marinstanev/Dropbox/MISU/Data/PSC_comp_peggy/RFs.mat')
+    comp_R=peggy_file['PSC_measurement_BSR_PAR']
+    comp_R_error=peggy_file['PSC_measurement_BSR_PAR_error']
+    comp_xR=peggy_file['PSC_measurement_BSR_XP']
+    comp_xR_corr=peggy_file['PSC_measurement_BSR_XP_corr']
+    comp_xR_error=peggy_file['PSC_measurement_BSR_XP_error']
+    comp_depol=peggy_file['PSC_measurement_DEPOL']
+    comp_depol_error=peggy_file['PSC_measurement_DEPOL_error']
+    comp_height=peggy_file['PSC_measurement_height']
 
 
     # Get altitudes
@@ -277,18 +287,18 @@ for obs_date in lidar_dates:
     R_time_array=np.array(R_time)
     depol_10line = xR_array-((R_array-1.)*0.1/0.0036+1)
     depol_4line= xR_array-((R_array-1.)*0.004/0.0036+1)
-    psc_NAT=R_array[np.where((R_array<=2.0) & (depol_10line>0))]
-    psc_NAT_alt=R_alt_array[np.where((R_array<=2.0) & (depol_10line>0))]
-    psc_NAT_time=R_time_array[np.where((R_array<=2.0) & (depol_10line>0))]
+    psc_NAT=R_array[np.where((R_array>1.06) & (R_array<=2.0) & (depol_10line>0))]
+    psc_NAT_alt=R_alt_array[np.where((R_array>1.06) & (R_array<=2.0) & (depol_10line>0))]
+    psc_NAT_time=R_time_array[np.where((R_array>1.06) & (R_array<=2.0) & (depol_10line>0))]
     psc_ICE=R_array[np.where((R_array>2.0) & (depol_10line>0))]
     psc_ICE_alt=R_alt_array[np.where((R_array>2.0) & (depol_10line>0))]
     psc_ICE_time=R_time_array[np.where((R_array>2.0) & (depol_10line>0))]
-    psc_STS=R_array[np.where((R_array<5.0) & (depol_4line<0))]
-    psc_STS_alt=R_alt_array[np.where((R_array<5.0) & (depol_4line<0))]
-    psc_STS_time=R_time_array[np.where((R_array<5.0) & (depol_4line<0))]
-    psc_MIX1=R_array[np.where((R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
-    psc_MIX1_alt=R_alt_array[np.where((R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
-    psc_MIX1_time=R_time_array[np.where((R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
+    psc_STS=R_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line<0))]
+    psc_STS_alt=R_alt_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line<0))]
+    psc_STS_time=R_time_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line<0))]
+    psc_MIX1=R_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
+    psc_MIX1_alt=R_alt_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
+    psc_MIX1_time=R_time_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
     psc_MIX2=R_array[np.where((R_array>=5.0) & (depol_10line<0))]
     psc_MIX2_alt=R_alt_array[np.where((R_array>=5.0) & (depol_10line<0))]
     psc_MIX2_time=R_time_array[np.where((R_array>=5.0) & (depol_10line<0))]
@@ -312,6 +322,13 @@ for obs_date in lidar_dates:
     
     #cax = ax.scatter(R,R_time_array)
     #cax = ax.scatter(xR,R_time_array)
-    
+    fig, ax = plt.subplots(1)
+    plt.plot(np.log(ram[:,24]),alts,c="red")
+    plt.plot(np.log(ray[:,24]),alts,c="black")
+    plt.plot(np.log(constant[24]*ram[:,24]),alts,c="blue")
+    plt.ylabel('Altitude in km')
+    plt.xlabel('log(counts)')
+    plt.title(dates[24])
+    plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/bg_corr_'+obs_date+'.png')
 
    # """
