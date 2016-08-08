@@ -16,8 +16,8 @@ from dateutil.rrule import rrule, HOURLY
 # --> save directly in '/Figures/raw_data'
 # --------------------------------------------------------------------------------
 
-#lidar_dates = ['160105', '160106', '160113', '160114', '160118', '160120', '160121', '160123', '160126', '160127', '160129', '160201', '160215', '160216']
-lidar_dates = ['160113']
+lidar_dates = ['160105', '160106', '160113', '160114', '160118', '160120', '160121', '160123', '160126', '160127', '160129', '160201', '160215', '160216']
+#lidar_dates = ['160113']
 
 for obs_date in lidar_dates:
 
@@ -77,10 +77,11 @@ for obs_date in lidar_dates:
     
 
     # Correction factor to be applied on the Raman channel
-    constant, Xconstant = [], []
+    constant, Xconstant =   [], []
     for j in range(len(dates)):   # Loop over scans
-        x1,x2,xalts = [], [], []
-        Xx1,Xx2,Xxalts = [], [], []
+        x1,x2,x1alts,x2alts = [], [], [], []
+        Xx1,Xx2,Xx1alts,Xx2alts = [], [], [],[]
+        corr_counts, Xcorr_counts = [], []
         
         for i in range(len(alts)):
             if alts[i]>26.:
@@ -88,10 +89,12 @@ for obs_date in lidar_dates:
                 if not np.isnan(ray[i,j]) and not np.isnan(ram[i,j]):
                     if ray[i,j]>0 and ram[i,j]>0:
                         x1.append(ray[i,j])
+                        x1alts.append(alts[i])
         
                 if not np.isnan(Xray[i,j]) and not np.isnan(Xram[i,j]):
                     if Xray[i,j]>0 and Xram[i,j]>0:
                         Xx1.append(Xray[i,j])
+                        Xx1alts.append(alts[i])  
     
                         
             if alts[i]>15.:
@@ -99,24 +102,38 @@ for obs_date in lidar_dates:
                 if not np.isnan(ray[i,j]) and not np.isnan(ram[i,j]):
                     if ray[i,j]>0 and ram[i,j]>0:
                         x2.append(ram[i,j])
-                        xalts.append(alts[i])
+                        x2alts.append(alts[i])
         
                 if not np.isnan(Xray[i,j]) and not np.isnan(Xram[i,j]):
                     if Xray[i,j]>0 and Xram[i,j]>0:
                         Xx2.append(Xram[i,j])
-                        Xxalts.append(alts[i])   
+                        Xx2alts.append(alts[i])   
                         
-        xfit=np.polyfit(np.log(x2),xalts,1)
-        Xxfit=np.polyfit(np.log(Xx2),Xxalts,1)                
-        joint_ram_fit_slope=(xfit[0]+Xxfit[0])/2.       
-        joint_ram_fit_intercept=(xfit[1]+Xxfit[1])/2. 
-        corr_counts=np.exp((alts-joint_ram_fit_intercept)/joint_ram_fit_slope)
-        if len(x1)>0 and len(x2)>0:
-            #print(np.mean(x1),np.max(x1))
-            constant.append(np.mean(x1)/joint_ram_mean)
-        else: constant.append(np.nan)
         
-        if len(Xx1)>0 and len(Xx2)>0: Xconstant.append(np.mean(Xx1)/joint_ram_mean)
+        
+        try:
+            xfit=np.polyfit(np.log(x2),x2alts,1)
+            Xxfit=np.polyfit(np.log(Xx2),Xx2alts,1)
+        except:
+            xfit=[0,0]
+            Xxfit=[0,0]
+            print("regression failed")
+            
+        if len(x1)>0 and len(x2)>0:                   
+            joint_ram_fit_slope=(xfit[0]+Xxfit[0])/2.       
+            joint_ram_fit_intercept=(xfit[1]+Xxfit[1])/2. 
+            corr_counts=np.exp((np.asarray(x1alts)-joint_ram_fit_intercept)/joint_ram_fit_slope)
+            
+            #print(np.mean(x1),np.max(x1))
+            constant.append(np.mean(x1/corr_counts))
+        else: 
+            constant.append(np.nan)
+            
+            
+        
+        if len(Xx1)>0 and len(Xx2)>0: 
+            Xcorr_counts=np.exp((np.asarray(Xx1alts)-joint_ram_fit_intercept)/joint_ram_fit_slope)
+            Xconstant.append(np.mean(Xx1/Xcorr_counts))
         else: Xconstant.append(np.nan)
     
 
@@ -241,7 +258,7 @@ for obs_date in lidar_dates:
 
     R, xR, R_alt, R_time = [], [], [], []
 
-    xx,yy = np.arange(0,1e3,1).tolist(), np.arange(0,1e4,1).tolist()
+    xx,yy = np.arange(0,60000,1).tolist(), np.arange(0,1e3,1).tolist()
     print len(xx), len(yy)
     X, Y = np.meshgrid(yy,xx)
 
@@ -341,12 +358,13 @@ for obs_date in lidar_dates:
     #cax = ax.scatter(R,R_time_array)
     #cax = ax.scatter(xR,R_time_array)
     fig, ax = plt.subplots(1)
-    plt.plot(np.log(ram[:,24]),alts,c="red")
-    plt.plot(np.log(ray[:,24]),alts,c="black")
-    plt.plot(np.log(constant[24]*ram[:,24]),alts,c="blue")
+    plt.plot(np.log(ram[:,50]),alts,c="red")
+    plt.plot(np.log(ray[:,50]),alts,c="black")
+    plt.plot(np.log(constant[50]*ram[:,50]),alts,c="blue")
+    plt.plot(np.log(corr_counts),x1alts,c="yellow")
     plt.ylabel('Altitude in km')
     plt.xlabel('log(counts)')
-    plt.title(dates[24])
+    plt.title(dates[50])
     plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/bg_corr_'+obs_date+'.png')
 
    # """
