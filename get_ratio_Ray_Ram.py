@@ -5,24 +5,94 @@ import matplotlib.pyplot as plt
 from matplotlib.dates import YearLocator, MonthLocator, DayLocator, HourLocator, DateFormatter
 import datetime
 from scipy import stats
+import scipy.io
 from netCDF4 import Dataset
 from dateutil.rrule import rrule, HOURLY
-
+import math as m
+#from mpl_toolkits.axes_grid1 import make_axes_locatable
+import mpl_toolkits.axes_grid1
 
 # --------------------------------------------------------------------------------
 # Script to plot the original data, but where every 5 minutes data is present (data or NaNs)
 # --> masks where NaNs are present
 # --> save directly in '/Figures/raw_data'
 # --------------------------------------------------------------------------------
-#taken out bc no nc file bc HDF5 format: '160113',
-lidar_dates = ['160105', '160106',  '160114', '160118', '160120', '160121', '160123', '160126', '160127', '160129', '160201', '160215', '160216']
+
+#lidar_dates = ['160105', '160106', '160113', '160114', '160118', '160120', '160121', '160123', '160126', '160127', '160129', '160201', '160215', '160216']
+lidar_dates = ['160114']
+
+
+
+
+# --------------------------------------------------------------------------------
+# Function to determine the factor to which to multiply the Raman channel
+# --------------------------------------------------------------------------------
+alt_lim = 15.   # lower limit altitude variable for fitting procedure
+def get_constant(j, alts, ram, ray):
+    
+    # Take points above 15km to fit straight line to in log-space
+    nw_alts = [alts[i] for i in range(len(alts)) if alts[i]>alt_lim and ram[i,j]>1]
+    nw_ray_m = [m.log(ram[i,j]) for i in range(len(alts)) if alts[i]>alt_lim and ram[i,j]>1]
+    
+    # Fit a straight line to selected points
+    if len(nw_alts)>0:
+        
+        coeff = np.polyfit(nw_alts, nw_ray_m, 1)
+        poly = np.poly1d(coeff)
+        new_pol = poly(alts)
+        
+        x1, x2 = [], []
+        # You want to compare to measurements at each altitude, with z>=27km (aerosol free)
+        for i in range(len(alts)):
+            if alts[i]>27. and not np.isnan(ray[i,j]) and ray[i,j]>0:
+                x1.append(ray[i,j])
+                x2.append(m.exp(new_pol[i]))
+    
+        r_constant = [x1[i]/x2[i] for i in range(len(x1))]
+        
+        return np.nanmean(r_constant)
+
+    # No valid points found
+    else:
+        return np.nan
+# --------------------------------------------------------------------------------
+
+
+
+# --------------------------------------------------------------------------------
+# Function to determine the backscatter ratio
+# --------------------------------------------------------------------------------
+def get_backsatter_ratio(ram,ray,constant):
+    
+    ratio = np.ndarray(shape=(len(ram),len(ram[0])))
+    for i in range(len(ram)):
+        for j in range(len(ram[i])):
+            if not np.isnan(constant[j]) and ram[i,j]>0:
+                ratio[i,j] = ray[i,j]/(constant[j]*ram[i,j])
+            else: ratio[i,j] = np.nan
+
+    return ratio
+# --------------------------------------------------------------------------------
+
+
+
+
 
 for obs_date in lidar_dates:
 
-
+    m_file = Dataset('/Users/kohendri/Documents/PSC/data/Time_interpolated/Rayleigh_channels_'+obs_date+'.nc')
+    """
     m_file = Dataset('/Users/marinstanev/Dropbox/MISU/Data/esrange_mat_format/16jan/Rayleigh_channels_'+obs_date+'.nc')
-
-
+    peggy_file = scipy.io.loadmat('/Users/marinstanev/Dropbox/MISU/Data/PSC_comp_peggy/RFs.mat')
+    comp_R=peggy_file['PSC_measurement_BSR_PAR']
+    comp_R_error=peggy_file['PSC_measurement_BSR_PAR_error']
+    comp_xR=peggy_file['PSC_measurement_BSR_XP']
+    comp_xR_corr=peggy_file['PSC_measurement_BSR_XP_corr']
+    comp_xR_error=peggy_file['PSC_measurement_BSR_XP_error']
+    comp_depol=peggy_file['PSC_measurement_DEPOL']
+    comp_depol_error=peggy_file['PSC_measurement_DEPOL_error']
+    comp_height=peggy_file['PSC_measurement_height']
+    """
 
     # Get altitudes
     alts = [x for x in m_file['Altitude']]
@@ -57,7 +127,7 @@ for obs_date in lidar_dates:
     sys.exit(0)
     """
     
-    x1, x2 = 30, 200
+    x1, x2 = 34, 200
     print alts[x1], alts[x2]
     alts = alts[x1:x2]
     #sys.exit(0)
@@ -69,6 +139,11 @@ for obs_date in lidar_dates:
     # Correction factor to be applied on the Raman channel
     constant, Xconstant = [], []
     for j in range(len(dates)):   # Loop over scans
+        
+        constant.append(get_constant(j,alts,ram, ray))
+        Xconstant.append(get_constant(j,alts,Xram, Xray))
+        
+        """
         x1,x2 = [], []
         Xx1,Xx2 = [], []
         
@@ -90,13 +165,15 @@ for obs_date in lidar_dates:
         
         if len(Xx1)>0 and len(Xx2)>0: Xconstant.append(np.max(Xx1)/np.max(Xx2))
         else: Xconstant.append(np.nan)
-    
+        """
 
     # Calculate the backscatter ratio now, with correction factor applied
-    ratio = [[ray[i,j]/(constant[j]*ram[i,j]) for j in range(len(ram[i]))] for i in range(len(ram))]
+    #ratio = [[ray[i,j]/(constant[j]*ram[i,j]) for j in range(len(ram[i]))] for i in range(len(ram))]
+    ratio = get_backsatter_ratio(ram,ray,constant)
     ratio = np.asarray(ratio)
 
-    Xratio = [[Xray[i,j]/(Xconstant[j]*Xram[i,j]) for j in range(len(Xram[i]))] for i in range(len(Xram))]
+    #Xratio = [[Xray[i,j]/(Xconstant[j]*Xram[i,j]) for j in range(len(Xram[i]))] for i in range(len(Xram))]
+    Xratio = get_backsatter_ratio(Xram,Xray,Xconstant)
     Xratio = np.asarray(Xratio)
 
 
@@ -120,9 +197,10 @@ for obs_date in lidar_dates:
     d_aero = np.ndarray(shape=(len(alts),len(dates)))
     for i in range(len(alts)):
         for j in range(len(dates)):
-            if ratio[i,j]>1.06 and Xratio[i,j]>1.06 and not np.isinf(Xratio[i,j]) and not np.isinf(ratio[i,j]):
-                delta = (Xratio[i,j]-1)/(ratio[i,j]-1)*0.36
-            else: delta = np.nan
+            delta = np.nan
+            if not np.isinf(Xratio[i,j]) and not np.isinf(ratio[i,j]):
+                if ratio[i,j]>1.06 and Xratio[i,j]>1.06:
+                    delta = (Xratio[i,j]-1)/(ratio[i,j]-1)*0.36
 
             d_aero[i,j] = delta
 
@@ -147,56 +225,58 @@ for obs_date in lidar_dates:
                 hour_integrated_x[i,j], hour_integrated_y[i,j] = np.nan, np.nan
 
 
+    # -----------------------------------------
+    # Create figure with backscatter ratios
+    # -----------------------------------------
+    fig, axes = plt.subplots(1,2, figsize=(15,8))
+
+    for a,ax in enumerate(axes):
+        ax.xaxis.set_major_locator(DayLocator())
+        ax.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d'))
+        ax.xaxis.set_minor_locator(HourLocator())
+        ax.autoscale_view()
+
+        ax.set_ylabel('Altitude [km]')
+        ax.set_xlabel('Date')
+
+        if a==0: ax.set_title('ratio')
+        elif a==1: ax.set_title('Xratio')
+
+    # For plotting the backscatter ratio R of parallel and cross channel
+    X,Y = np.meshgrid(mpl.dates.date2num(dates),alts)
+    im1 = axes[0].contourf(X, Y, ratio, np.arange(1.06,11,1))
+    im2 = axes[1].contourf(X, Y, Xratio, np.arange(1.06,11,1))
+
+    # Create divider for existing axes instance
+    divider1 = mpl_toolkits.axes_grid1.make_axes_locatable(axes[0])
+    divider2 = mpl_toolkits.axes_grid1.make_axes_locatable(axes[1])
+    # Append axes to the right of axes, with 10% width of ax
+    cax1 = divider1.append_axes("right", size="10%", pad=0.05)
+    cax2 = divider2.append_axes("right", size="10%", pad=0.05)
+    
+    cbar1 = plt.colorbar(im1, cax=cax1)
+    cbar2 = plt.colorbar(im2, cax=cax2)
+
+    plt.show()
+
+
 
     fig, ax = plt.subplots(1)
-
-    X,Y = np.meshgrid(mpl.dates.date2num(dates),alts)
 
     ax.xaxis.set_major_locator(DayLocator())
     ax.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d'))
     ax.xaxis.set_minor_locator(HourLocator())
     ax.autoscale_view()
-
-    # For plotting the backscatter ratio R
-    lev_exp = np.arange(1.06,2.1,0.1)
-    levels = np.power(10,lev_exp)
-    im = ax.contourf(X, Y, Xratio)#,levels=levels)#, norm=mpl.colors.LogNorm())
-    cbar = plt.colorbar(im)
-
+    
     # For plotting the depolarisation of the aerosols
-    #levels = np.arange(2,10.01,0.1)
-    #im = ax.contourf(X, Y, d_aero, levels=levels,extend='both')
-    #cbar = plt.colorbar(im,ticks=np.arange(2,10.1,1))
-
-    ax.set_ylabel('Altitude [km]')
-    plt.title(obs_date)
-    plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/raw_data_perp_'+obs_date+'.png')
+    levels = np.arange(2,10.01,0.1)
+    im = ax.contourf(X, Y, d_aero, levels=levels,extend='max')
+    cbar = plt.colorbar(im,ticks=np.arange(2,10.1,1))
+    
+    #plt.savefig('/Users/kohendri/Documents/PSC/Figures/raw_data/raw_data_'+obs_date+'.png')
     plt.show()
     
-    fig, ax = plt.subplots(1)
-
-    X,Y = np.meshgrid(mpl.dates.date2num(dates),alts)
-
-    ax.xaxis.set_major_locator(DayLocator())
-    ax.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d'))
-    ax.xaxis.set_minor_locator(HourLocator())
-    ax.autoscale_view()
-
-    # For plotting the backscatter ratio R
-    lev_exp = np.arange(1.06,2.1,0.1)
-    levels = np.power(10,lev_exp)
-    im = ax.contourf(X, Y, ratio)#,levels=levels)#, norm=mpl.colors.LogNorm())
-    cbar = plt.colorbar(im)
-
-    # For plotting the depolarisation of the aerosols
-    #levels = np.arange(2,10.01,0.1)
-    #im = ax.contourf(X, Y, d_aero, levels=levels,extend='both')
-    #cbar = plt.colorbar(im,ticks=np.arange(2,10.1,1))
-
-    ax.set_ylabel('Altitude [km]')
-    plt.title(obs_date)
-    plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/raw_data_par_'+obs_date+'.png')
-    plt.show()
+    #sys.exit(0)
 
     #"""
     fig, ax = plt.subplots(1)
@@ -267,7 +347,7 @@ for obs_date in lidar_dates:
         ax.plot(R_range,l_1,c='black')
         plt.text(R_range[-350], l_1[-500], str(p*100)+'%')
     plt.grid()
-    plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/depol_'+obs_date+'.png')
+    #plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/depol_'+obs_date+'.png')
     plt.show()
     
     
@@ -277,18 +357,18 @@ for obs_date in lidar_dates:
     R_time_array=np.array(R_time)
     depol_10line = xR_array-((R_array-1.)*0.1/0.0036+1)
     depol_4line= xR_array-((R_array-1.)*0.004/0.0036+1)
-    psc_NAT=R_array[np.where((R_array<=2.0) & (depol_10line>0))]
-    psc_NAT_alt=R_alt_array[np.where((R_array<=2.0) & (depol_10line>0))]
-    psc_NAT_time=R_time_array[np.where((R_array<=2.0) & (depol_10line>0))]
+    psc_NAT=R_array[np.where((R_array>1.06) & (R_array<=2.0) & (depol_10line>0))]
+    psc_NAT_alt=R_alt_array[np.where((R_array>1.06) & (R_array<=2.0) & (depol_10line>0))]
+    psc_NAT_time=R_time_array[np.where((R_array>1.06) & (R_array<=2.0) & (depol_10line>0))]
     psc_ICE=R_array[np.where((R_array>2.0) & (depol_10line>0))]
     psc_ICE_alt=R_alt_array[np.where((R_array>2.0) & (depol_10line>0))]
     psc_ICE_time=R_time_array[np.where((R_array>2.0) & (depol_10line>0))]
-    psc_STS=R_array[np.where((R_array<5.0) & (depol_4line<0))]
-    psc_STS_alt=R_alt_array[np.where((R_array<5.0) & (depol_4line<0))]
-    psc_STS_time=R_time_array[np.where((R_array<5.0) & (depol_4line<0))]
-    psc_MIX1=R_array[np.where((R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
-    psc_MIX1_alt=R_alt_array[np.where((R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
-    psc_MIX1_time=R_time_array[np.where((R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
+    psc_STS=R_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line<0))]
+    psc_STS_alt=R_alt_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line<0))]
+    psc_STS_time=R_time_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line<0))]
+    psc_MIX1=R_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
+    psc_MIX1_alt=R_alt_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
+    psc_MIX1_time=R_time_array[np.where((R_array>1.06) & (R_array<5.0) & (depol_4line>0) & (depol_10line<0))]
     psc_MIX2=R_array[np.where((R_array>=5.0) & (depol_10line<0))]
     psc_MIX2_alt=R_alt_array[np.where((R_array>=5.0) & (depol_10line<0))]
     psc_MIX2_time=R_time_array[np.where((R_array>=5.0) & (depol_10line<0))]
@@ -304,14 +384,21 @@ for obs_date in lidar_dates:
     plt.xlabel('Time in h')
     plt.title('Time resolved PSC observation Date:'+obs_date)
     #plt.legend('NAT','STS','ICE','MIX')
-    plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/type_'+obs_date+'.png')
+    #plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/type_'+obs_date+'.png')
     #plt.set_ylabel('alt in km')
     #plt.set_xlabel('Parallel backscatter ratio')
     #plt.title(obs_date)
-    #plt.show()
-    
+    plt.show()
+    """
     #cax = ax.scatter(R,R_time_array)
     #cax = ax.scatter(xR,R_time_array)
-    
-
+    fig, ax = plt.subplots(1)
+    plt.plot(np.log(ram[:,24]),alts,c="red")
+    plt.plot(np.log(ray[:,24]),alts,c="black")
+    plt.plot(np.log(constant[24]*ram[:,24]),alts,c="blue")
+    plt.ylabel('Altitude in km')
+    plt.xlabel('log(counts)')
+    plt.title(dates[24])
+    plt.savefig('/Users/marinstanev/Dropbox/MISU/Plots/PSC/bg_corr_'+obs_date+'.png')
+    """
    # """
